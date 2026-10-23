@@ -157,6 +157,29 @@ async function waitIdle(channel: WeChatChannel): Promise<void> {
   assert.equal(channel.isBusy(), false, 'turn did not finish')
 }
 
+/**
+ * A follow stream that opens with `snapshot` then parks, imitating a hung turn.
+ * The gate is released when the test ends: a generator suspended on a promise
+ * that never settles outlives the test, and the runner cancels every remaining
+ * test in the file over it.
+ */
+function hungFollow(context: TestContext): ReturnType<SessionService['follow']> {
+  let release: () => void = () => undefined
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  context.after(() => {
+    release()
+    return new Promise((resolve) => setImmediate(resolve))
+  })
+  return {
+    async *[Symbol.asyncIterator]() {
+      yield { type: 'snapshot' }
+      await gate
+    },
+  } as ReturnType<SessionService['follow']>
+}
+
 test('bridge: pairing rejects wrong code and ignores strangers', async (context) => {
   const { channel, client } = setup(context)
   await channel.dispatch(message(1, 'stranger', 'hello'))
@@ -619,12 +642,7 @@ test('bridge: a second task while busy is rejected without queueing', async (con
     context,
     {
       prompt: async () => ({ accepted: true as const }),
-      follow: () => ({
-        async *[Symbol.asyncIterator]() {
-          yield { type: 'snapshot' }
-          await new Promise<void>(() => undefined)
-        },
-      }) as ReturnType<SessionService['follow']>,
+      follow: () => hungFollow(context),
     },
     undefined,
     { settleTimeoutMs: 20 },
@@ -645,12 +663,7 @@ test('bridge: timeout releases busy even when follow never settles', async (cont
     context,
     {
       prompt: async () => ({ accepted: true as const }),
-      follow: () => ({
-        async *[Symbol.asyncIterator]() {
-          yield { type: 'snapshot' }
-          await new Promise<void>(() => undefined)
-        },
-      }) as ReturnType<SessionService['follow']>,
+      follow: () => hungFollow(context),
     },
     undefined,
     { settleTimeoutMs: 20, config: { taskTimeoutMs: 20 } },
@@ -668,12 +681,7 @@ test('bridge: /stop releases a hung turn within the settle grace', async (contex
     context,
     {
       prompt: async () => ({ accepted: true as const }),
-      follow: () => ({
-        async *[Symbol.asyncIterator]() {
-          yield { type: 'snapshot' }
-          await new Promise<void>(() => undefined)
-        },
-      }) as ReturnType<SessionService['follow']>,
+      follow: () => hungFollow(context),
     },
     undefined,
     { settleTimeoutMs: 20 },
@@ -693,12 +701,7 @@ test('bridge: desktop archive cancels the running turn', async (context) => {
     context,
     {
       prompt: async () => ({ accepted: true as const }),
-      follow: () => ({
-        async *[Symbol.asyncIterator]() {
-          yield { type: 'snapshot' }
-          await new Promise<void>(() => undefined)
-        },
-      }) as ReturnType<SessionService['follow']>,
+      follow: () => hungFollow(context),
     },
     undefined,
     {
