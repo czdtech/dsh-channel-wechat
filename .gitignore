@@ -1,0 +1,9 @@
+node_modules/
+lib/
+coverage/
+.DS_Store
+.dsh-wechat/
+**/token.json
+**/state.json
+**/bridge.lock
+**/wx_qr.*

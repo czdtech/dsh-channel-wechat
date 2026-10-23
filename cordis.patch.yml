@@ -1,0 +1,12 @@
+- insert:
+    - id: dsh-channel-wechat
+      name: 'dsh-channel-wechat'
+      config:
+        autoStart: false
+        dataDir: '~/.dsh-wechat'
+        cwd: '~'
+        chunkBytes: 1800
+        taskTimeoutMs: 1800000
+        sessionIdleResetMinutes: 720
+        pollTimeoutMs: 30000
+        typingRefreshMs: 5000
