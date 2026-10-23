@@ -158,26 +158,29 @@ async function waitIdle(channel: WeChatChannel): Promise<void> {
 }
 
 /**
- * A follow stream that opens with `snapshot` then parks, imitating a hung turn.
- * The gate is released when the test ends: a generator suspended on a promise
- * that never settles outlives the test, and the runner cancels every remaining
- * test in the file over it.
+ * A follow stream that opens with `snapshot` then parks until the caller aborts
+ * the turn, which is what a hung agent stream actually does: the channel's
+ * `/stop`, timeout and archive paths all abort, and the generator then ends and
+ * settles every pending `next()`/`return()`. Parking on a promise that never
+ * settles instead would leave a dangling promise past the test, and Node 20's
+ * runner cancels the rest of the file over it.
  */
-function hungFollow(context: TestContext): ReturnType<SessionService['follow']> {
-  let release: () => void = () => undefined
-  const gate = new Promise<void>((resolve) => {
-    release = resolve
-  })
-  context.after(() => {
-    release()
-    return new Promise((resolve) => setImmediate(resolve))
-  })
-  return {
+function hungFollow(): (
+  request: Parameters<SessionService['follow']>[0],
+  signal?: AbortSignal,
+) => ReturnType<SessionService['follow']> {
+  return (_request, signal) => ({
     async *[Symbol.asyncIterator]() {
       yield { type: 'snapshot' }
-      await gate
+      await new Promise<void>((resolve) => {
+        if (!signal || signal.aborted) {
+          resolve()
+          return
+        }
+        signal.addEventListener('abort', () => resolve(), { once: true })
+      })
     },
-  } as ReturnType<SessionService['follow']>
+  } as ReturnType<SessionService['follow']>)
 }
 
 test('bridge: pairing rejects wrong code and ignores strangers', async (context) => {
@@ -642,7 +645,7 @@ test('bridge: a second task while busy is rejected without queueing', async (con
     context,
     {
       prompt: async () => ({ accepted: true as const }),
-      follow: () => hungFollow(context),
+      follow: hungFollow(),
     },
     undefined,
     { settleTimeoutMs: 20 },
@@ -663,7 +666,7 @@ test('bridge: timeout releases busy even when follow never settles', async (cont
     context,
     {
       prompt: async () => ({ accepted: true as const }),
-      follow: () => hungFollow(context),
+      follow: hungFollow(),
     },
     undefined,
     { settleTimeoutMs: 20, config: { taskTimeoutMs: 20 } },
@@ -681,7 +684,7 @@ test('bridge: /stop releases a hung turn within the settle grace', async (contex
     context,
     {
       prompt: async () => ({ accepted: true as const }),
-      follow: () => hungFollow(context),
+      follow: hungFollow(),
     },
     undefined,
     { settleTimeoutMs: 20 },
@@ -701,7 +704,7 @@ test('bridge: desktop archive cancels the running turn', async (context) => {
     context,
     {
       prompt: async () => ({ accepted: true as const }),
-      follow: () => hungFollow(context),
+      follow: hungFollow(),
     },
     undefined,
     {
