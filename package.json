@@ -54,7 +54,6 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "prepare": "tsc -p tsconfig.json",
     "login": "node lib/login.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "node --import tsx --test test/*.test.ts"

@@ -26,10 +26,12 @@ DeepSeek Harness 的个人微信 host 插件。它在 dsh 进程内长轮询 iLi
 装进某个 dsh profile（名字按你的部署，下面以 `web` 为例）：
 
 ```bash
-dsh plugin --profile web add github:czdtech/dsh-channel-wechat
+dsh plugin --profile web add github:czdtech/dsh-channel-wechat -w
 ```
 
 安装只写 profile 的依赖树，需要重启该 profile 的 host 才会加载插件。
+
+`lib/` 编译产物随仓库一起发布，所以从 GitHub 安装**不需要编译**，也不会碰到 pnpm 的构建脚本授权提示。改完 `src/` 记得 `pnpm build` 后把 `lib/` 一并提交。
 
 插件自带的 `cordis.patch.yml` 以 `autoStart: false` 声明自己，所以**装上不等于上线**：安装后它只会出现在插件列表里，不会开始轮询。真正启用有两条路：
 

@@ -1,7 +1,8 @@
 node_modules/
-lib/
 coverage/
 .DS_Store
+# lib/ 是 tsc 产物，随仓库发布，让 `dsh plugin add github:...` 免编译直接可用。
+# 改完 src/ 必须重新 `pnpm build` 一起提交；不要手工编辑 lib/。
 .dsh-wechat/
 **/token.json
 **/state.json
