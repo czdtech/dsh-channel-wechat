@@ -78,6 +78,20 @@ cp scripts/git-hooks/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre
 
 同一套规则也在 CI 上以 `--all` 模式跑整棵已提交的树，所以漏网的提交至少会在下一次 PR 上被翻出来。
 
+### 提交身份拦截
+
+上面扫的是文件内容，但提交元数据一样会泄露：`git log --format='%ae %ce'` 在公开仓库里就是作者邮箱列表，
+而内容扫描看不见它。钩子因此还检查 `AUTHOR`/`COMMITTER` 邮箱是否等于本仓库发布用的地址：
+
+```bash
+git config wechat.expectedAuthorEmail '<你的 noreply 地址>'   # 仓库级，不写全局
+```
+
+这个期望值只从仓库本地配置读取，脚本里不写死任何地址——没设这项的人（包括外部贡献者）
+完全感觉不到这条检查存在。它也不进 CI：别人的提交身份不该由本仓库裁决。
+注意它跑在「暂存区为空就提前退出」之前，因为 `git commit --amend --reset-author`
+这类只改元数据的提交恰恰没有暂存行，也正是第一次把真实邮箱推上去的那条路径。
+
 ### CI
 
 `.github/workflows/ci.yml` 在 Node `20.x`（engines 下限）和 `24.x`（作者本机版本）上跑：

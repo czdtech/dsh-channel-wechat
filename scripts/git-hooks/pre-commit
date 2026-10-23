@@ -27,6 +27,40 @@ if ! git rev-parse --git-dir >/dev/null 2>&1; then
 	exit 0
 fi
 
+# Identity guard — staged mode only, and only when this repo opts in.
+#
+# Commit metadata leaks exactly like file content does: publishing with a real
+# address in the author/committer lines puts it on every clone of a public repo,
+# and no content scan can see it. But the expected address is the operator's own
+# identity, so hardcoding it here would ship a personal value in code and then
+# block strangers who install this hook. Reading it from repo-local config keeps
+# the check silent for anyone who has not set the key.
+#
+# This runs before the empty-staged-diff exit below: a metadata-only commit
+# (`git commit --amend --reset-author`) stages no lines at all, which is exactly
+# how the real address got published the first time.
+if [ "$mode" = staged ]; then
+	expected_email=$(git config --get wechat.expectedAuthorEmail 2>/dev/null)
+	if [ -n "$expected_email" ]; then
+		bad=''
+		for who in AUTHOR COMMITTER; do
+			email=$(git var "GIT_${who}_IDENT" 2>/dev/null | sed -n 's/.*<\(.*\)>.*/\1/p')
+			if [ -z "$email" ] || [ "$email" != "$expected_email" ]; then
+				bad="${bad:+$bad/}${who}"
+			fi
+		done
+		if [ -n "$bad" ]; then
+			{
+				printf 'pre-commit: refused — the %s identity is not the address this repo publishes with.\n' "$bad"
+				echo 'The expected address comes from:  git config --get wechat.expectedAuthorEmail'
+				echo 'Fix the identity for this repo only (git config user.email ...), or commit with'
+				echo '-c user.email=<expected>. The guard deliberately does not echo either address.'
+			} >&2
+			exit 1
+		fi
+	fi
+fi
+
 if [ "$mode" = all ]; then
 	files=$(git ls-files)
 else
