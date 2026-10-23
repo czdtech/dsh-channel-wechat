@@ -9,6 +9,8 @@
 > 保留处置权利，官方接口本身也可能收紧、变更或撤销绑定；账号与数据风险由使用者自行承担。
 > 本软件按 MIT 协议「原样」提供，不带任何担保。
 
+![ci](https://github.com/czdtech/dsh-channel-wechat/actions/workflows/ci.yml/badge.svg)
+
 DeepSeek Harness 的个人微信 host 插件。它在 dsh 进程内长轮询 iLink，把你本人的微信消息作为任务交给本机 dsh 会话，再把回答分片发回微信。包名与插件名均为 `dsh-channel-wechat`，入口导出 `name`、`inject`、`Config`、`apply`，仅注入 `sessionController`。
 
 任务确认流程由独立插件 `dsh-task-confirm` 提供，本包不依赖它：两者只通过宿主服务名 `taskConfirm` 协作，确认插件缺席时微信通道照常工作。
