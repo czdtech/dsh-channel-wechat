@@ -1,15 +1,15 @@
-# 保守切换与回滚
+# 保守启用与回滚
 
-以下命令用于获批后的本机切换与回滚。任何时刻都不得同时运行 Python 桥和插件。
+以下是一次单机部署的启用、验证与回滚范例。任何时刻都不得让两份实现用同一个微信 token 同时轮询。
 
 本文是运行手册模板：把 `REPO`、`OLD_BRIDGE`、`AGENT`、`OLD_AGENT` 和示例 `cwd`
 换成你自己的部署值后再执行。标签名和目录名都是本机私有信息，不要提交真实值。
 
 ```bash
 REPO="$HOME/code/dsh-channel-wechat"            # 本仓库
-OLD_BRIDGE="$HOME/code/dsh-wechat"              # 旧 Python 桥（回滚材料）
+OLD_BRIDGE="$HOME/code/wechat-bridge"           # 旧实现：另一份轮询同一 token 的进程（回滚目标）
 AGENT="gui/$(id -u)/com.example.dsh-web"        # dsh web host 的 LaunchAgent
-OLD_AGENT="gui/$(id -u)/com.example.dsh-wechat" # Python 桥的 LaunchAgent
+OLD_AGENT="gui/$(id -u)/com.example.dsh-bridge" # 旧实现的 LaunchAgent
 ```
 
 ## 切换前检查
@@ -24,7 +24,7 @@ curl -sS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3080/
 ps -axo pid=,ppid=,command= | grep -F "$OLD_BRIDGE" | grep -v grep
 ```
 
-3080 返回 `401` 表示服务存活且需要认证。Python 桥在进程列表中出现时，不得启用插件。
+3080 返回 `401` 表示服务存活且需要认证。旧实现在进程列表中出现时，不得启用插件。
 
 备份凭据和 owner 状态；备份目录必须保持私有：
 
@@ -43,7 +43,7 @@ chmod 600 "$BACKUP/token.json" "$BACKUP/state.json"
 
 先获得停止旧桥、安装包、修改 web profile 和重启 web host 的明确批准。
 
-1. 停止 Python 桥并确认退出：
+1. 停止旧实现并确认退出：
 
 ```bash
 launchctl kill SIGTERM "$OLD_AGENT"
@@ -111,7 +111,7 @@ lsof -nP -a -p "$PID" -iTCP -sTCP:ESTABLISHED
 7. 依次从 owner 微信发送 `/status`、一条普通文本、`/new`，再启动一个长任务并用
 `/stop` 中止。非 owner 不应收到任何回复。
 
-若 token 已失效，先确认 Python 桥已停止，再运行：
+若 token 已失效，先确认旧实现已停止，再运行：
 
 ```bash
 cd "$REPO"
@@ -150,4 +150,4 @@ ps -axo pid=,ppid=,command= | grep -F "$OLD_BRIDGE" | grep -v grep
 
 5. 从 owner 微信发送一条测试消息并停止计时。目标不超过 3 分钟。
 
-Python 实现、虚拟环境、LaunchAgent 和备份至少保留 2 周；任何删除都需另行批准。附件、审批和主动推送不在本次范围内。
+旧实现的代码、虚拟环境、LaunchAgent 和备份至少保留 2 周；任何删除都需另行批准。附件、审批和主动推送不在本次范围内。

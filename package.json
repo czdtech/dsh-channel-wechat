@@ -1,8 +1,26 @@
 {
   "name": "dsh-channel-wechat",
   "version": "0.1.0",
-  "private": true,
   "description": "Personal WeChat channel for DeepSeek Harness, as an in-process host plugin",
+  "license": "MIT",
+  "author": "czdtech",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/czdtech/dsh-channel-wechat.git"
+  },
+  "bugs": {
+    "url": "https://github.com/czdtech/dsh-channel-wechat/issues"
+  },
+  "homepage": "https://github.com/czdtech/dsh-channel-wechat#readme",
+  "keywords": [
+    "deepseek-harness",
+    "cordis-plugin",
+    "wechat",
+    "ilink"
+  ],
+  "engines": {
+    "node": ">=20.18.1"
+  },
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
@@ -36,6 +54,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "prepare": "tsc -p tsconfig.json",
     "login": "node lib/login.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "node --import tsx --test test/*.test.ts"

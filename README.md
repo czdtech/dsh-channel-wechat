@@ -1,19 +1,42 @@
 # dsh-channel-wechat
 
-DeepSeek Harness 的个人微信 host 插件。包名与插件名均为 `dsh-channel-wechat`，入口导出 `name`、`inject`、`Config`、`apply`，仅注入 `sessionController`。
+DeepSeek Harness 的个人微信 host 插件。它在 dsh 进程内长轮询 iLink，把你本人的微信消息作为任务交给本机 dsh 会话，再把回答分片发回微信。包名与插件名均为 `dsh-channel-wechat`，入口导出 `name`、`inject`、`Config`、`apply`，仅注入 `sessionController`。
 
 任务确认流程由独立插件 `dsh-task-confirm` 提供，本包不依赖它：两者只通过宿主服务名 `taskConfirm` 协作，确认插件缺席时微信通道照常工作。
 
-当前完成 M1-M3 的离线实现：
+能力范围：
 
-- 兼容 Python 版 `~/.dsh-wechat/token.json` 与 `state.json`；
 - 微信配对、命令、单飞、去重、分片、发送重试和额度控制；
 - iLink 六个端点、扫码登录、游标持久化和 `-14` 失效处理；
 - DSH 持久会话检查、惰性 `follow()` 首帧同步、prompt、cancel；
+- 会话闲置重置，以及会话在电脑端被归档后的自动换新会话；
 - 完整卸载时中止轮询和任务、结束 follow、清理定时器并关闭 HTTP 连接；
 - Web 控制台「插件 → 微信通道」Settings UI，支持即时生效与重启生效字段。
 
-M4 的附件、审批和主动推送不在本项目范围内。
+附件、审批卡片和主动推送不在本项目范围内。
+
+## 依赖要求
+
+- 已安装 `dsh`，并能用 `dsh --profile <name>` 启动一个 host（本项目在 `0.2.1-rc.2` 上开发）；
+- Node `>=20.18.1`（`AbortSignal.any` 与 undici 7 的最低要求）；
+- 一个可以扫码的个人微信。iLink 凭据只落在本机数据目录，`0600` 权限，不进日志与输出。
+
+## 安装
+
+装进某个 dsh profile（名字按你的部署，下面以 `web` 为例）：
+
+```bash
+dsh plugin --profile web add github:czdtech/dsh-channel-wechat
+```
+
+安装只写 profile 的依赖树，需要重启该 profile 的 host 才会加载插件。
+
+插件自带的 `cordis.patch.yml` 以 `autoStart: false` 声明自己，所以**装上不等于上线**：安装后它只会出现在插件列表里，不会开始轮询。真正启用有两条路：
+
+- Web 控制台「插件 → 微信通道」打开「启用微信通道」并保存；
+- 或在该 profile 的 `cordis.patch.yml` 里追加同 id 的配置覆盖，见 `docs/cutover.md`。
+
+clone 本仓库到本地后同样可以直接安装：`dsh plugin --profile web add <本仓库绝对路径>`。若你的 profile 目录是 pnpm workspace 根，pnpm 会要求补一个 `-w`。
 
 ## 开发验证
 
@@ -71,14 +94,21 @@ DSH 的配置写入器会显式保存整组字段，因此数值等于默认值�
 
 ## 扫码登录
 
-确保 Python 桥已经停止且进程消失后，构建并运行：
+先确认**没有别的进程在用同一个微信 token 轮询**（例如另一份旧实现或第二个 host 实例）——同一 token 双轮询会互相抢消息。然后构建并运行登录：
 
 ```bash
+pnpm install
 pnpm build
 pnpm login -- ~/.dsh-wechat
 ```
 
-终端会显示二维码，并以 `0600` 权限写入 `wx_qr.png`；程序不会输出 token。不要同时运行 Python 桥和插件轮询。
+已作为插件安装到 profile 里时，直接跑安装目录中的登录入口即可（数据目录参数与上面一致）：
+
+```bash
+node ~/.dsh/profiles/web/node_modules/dsh-channel-wechat/lib/login.js ~/.dsh-wechat
+```
+
+终端会显示二维码，并以 `0600` 权限写入 `wx_qr.png`；程序不会输出 token。
 
 ## 使用
 
@@ -136,4 +166,15 @@ PAIRING_OK=yes
 - **每个 `context_token` 最多 10 条消息**：超长回答会被截断，额度接近耗尽时会先附一条提示占用最后一格；`/new` 重置当前会话的额度。
 - **`cwd` 默认值是 `~`**：插件不内置任何个人目录；把 `cwd` 固定到项目目录后，微信会话归到该目录对应的工作区，而不是「未分组」。
 
-切换与回滚步骤见 `docs/cutover.md`。任何 DSH 配置或权限变更都必须先获得用户批准。
+启用、验证与回滚范例见 `docs/cutover.md`。
+
+## 安全模型
+
+- 只有配对的 owner 账号会被响应；其他微信号发来的消息静默丢弃，日志与输出里不出现任何微信 owner 标识。
+- 配对码是 6 位大写十六进制，比较走 SHA-256 + `timingSafeEqual`；配对成功后不再接受配对码。
+- iLink token 与通道状态落在 `dataDir`（目录 `0700`，文件 `0600`，临时文件 + 原子替换）；损坏时回退为未配对。
+- 未捕获异常会拖垮整个 host，因此通道把取消、超时、卸载都做成有界清理。
+
+## 许可
+
+MIT，见 `LICENSE`。
