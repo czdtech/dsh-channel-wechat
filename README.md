@@ -84,13 +84,19 @@ cp scripts/git-hooks/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre
 而内容扫描看不见它。钩子因此还检查 `AUTHOR`/`COMMITTER` 邮箱是否等于本仓库发布用的地址：
 
 ```bash
-git config wechat.expectedAuthorEmail '<你的 noreply 地址>'   # 仓库级，不写全局
+# 地址取 GitHub 邮箱设置里那条「数字ID+用户名@users.noreply.github.com」
+git config wechat.expectedAuthorEmail '<你的 noreply 地址>'   # 启用拦截
+git config user.email '<同一个地址>'                          # 让本仓库提交自带它
 ```
+
+两条都要：只设第一条，则每次提交都会被拦；只设第二条，则地址写错了也没人发现。
 
 这个期望值只从仓库本地配置读取，脚本里不写死任何地址——没设这项的人（包括外部贡献者）
 完全感觉不到这条检查存在。它也不进 CI：别人的提交身份不该由本仓库裁决。
 注意它跑在「暂存区为空就提前退出」之前，因为 `git commit --amend --reset-author`
 这类只改元数据的提交恰恰没有暂存行，也正是第一次把真实邮箱推上去的那条路径。
+还有一点容易漏：钩子是从上一节 `cp` 到 `.git/hooks/pre-commit` 的那份副本执行的，
+重新 clone 或换机器后不重拷，这条拦截就是空的。
 
 ### CI
 

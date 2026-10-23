@@ -8,6 +8,6 @@
 - 真实 prompt 已完成并收到 `turn/end`。
 - `cancel({ sessionId })` 返回 accepted，事件流随后收到 `turn/end`。
 - 对已有非空 sessionId 再调用 `create({ sessionId })` 会返回不同 session，不能用于恢复。
-- 持久 session 应先 `inspect`，随后直接 `prompt`；不存在时才创建新 session。
+- 持久 session 应先 `inspect` 确认存在，随后仍按上一条先取 `follow` 的首帧 `snapshot` 再 `prompt`；不存在时才创建新 session。
 - effect dispose 已验证成功。
 - 隔离实例需要继承 secrets 才能获得可用模型；验证过程未记录或写入任何 secret。

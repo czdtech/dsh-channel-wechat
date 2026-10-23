@@ -41,5 +41,5 @@
 - 只从含 `tool-call` 的 assistant/message 中提取首个工具前文本；仅 `【任务理解】` 前缀可提前发送。
 - 含工具调用的中间 assistant 文本不进入最终回答；普通无工具回答正常汇总。
 - `follow()` 必须先读取 snapshot，再提交 prompt。
-- 持久 session 使用 `inspect` 后直接 prompt；恢复失败时创建新 session 并提示。
+- 持久 session 先用 `inspect` 判断存在与否，之后仍按上一条先 `follow` 取 snapshot 再 `prompt`；恢复失败时创建新 session 并提示。
 - `/stop`、超时和插件卸载都会调用 `cancel` 并中止本轮 follow。
