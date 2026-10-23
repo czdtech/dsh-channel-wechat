@@ -1,0 +1,109 @@
+#!/bin/sh
+# Pre-commit guard: block personal identifiers and credentials from entering the repo.
+#
+# It reads only staged additions, reports the rule and the line number, and never
+# echoes the matched text — printing it would put the secret in the terminal and
+# in any pasted report.
+#
+# Install:  cp scripts/git-hooks/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
+# Escape:   git commit --no-verify   (only when you know exactly what matched)
+
+set -u
+
+if ! git rev-parse --git-dir >/dev/null 2>&1; then
+	exit 0
+fi
+
+files=$(git diff --cached --name-only --diff-filter=ACM)
+if [ -z "$files" ]; then
+	exit 0
+fi
+
+user=$(id -un)
+home=$(printenv HOME)
+
+# Fixed strings that identify this machine or its operator.
+literal_patterns=$(cat <<EOF
+$home
+/Users/$user
+/private/var/folders
+com.$user.
+ilink_bot_token=
+TDAM_USER_KEY=
+EOF
+)
+
+# Credential and WeChat-identifier shapes. Deliberately narrow: a noisy guard
+# gets bypassed, so anything that could hit a legitimate placeholder stays out.
+regex_patterns=$(cat <<'EOF'
+wxid_[A-Za-z0-9]{6,}
+[?&]token=[A-Za-z0-9_.-]{16,}
+Bearer [A-Za-z0-9_.-]{20,}
+(ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{20,}
+sk-[A-Za-z0-9]{20,}
+PAIRING_CODE=[0-9A-F]{6}
+BEGIN (RSA |EC |OPENSSH |DSA )?PRIVATE KEY
+ilinkai\.weixin\.qq\.com/(get_bot_qrcode|sendmessage)[^ ]*[A-Za-z0-9]{24,}
+EOF
+)
+
+violations=0
+
+report() {
+	printf '%s\n' "  $1" >&2
+	violations=$((violations + 1))
+}
+
+# Files that must never be tracked even if forced with `git add -f`.
+for f in $files; do
+	case "$f" in
+		*token.json|*state.json|wx_qr.*|*/bridge.lock|.env|*.env|*credentials*|*secrets.env)
+			report "forbidden path staged (credential-shaped file): $f"
+			;;
+	esac
+done
+
+for f in $files; do
+	# The guard's own pattern list contains literal secret shapes; without this
+	# skip it would block every commit that touches the hook itself.
+	case "$f" in scripts/git-hooks/pre-commit|.git/hooks/pre-commit) continue ;; esac
+	# Only added lines, without the leading `+`, so existing history and context
+	# lines cannot trip the guard.
+	added=$(git diff --cached -U0 -- "$f" | sed -n '/^@@/,$p' | grep '^+' | grep -v '^+++' | sed 's/^+//')
+	if [ -z "$added" ]; then
+		continue
+	fi
+
+	while IFS= read -r needle; do
+		[ -z "$needle" ] && continue
+		if printf '%s\n' "$added" | grep -qF -- "$needle"; then
+			count=$(printf '%s\n' "$added" | grep -cF -- "$needle")
+			report "$f: $count added line(s) contain a machine-local string [redacted]"
+		fi
+	done <<EOF
+$literal_patterns
+EOF
+
+	while IFS= read -r rule; do
+		[ -z "$rule" ] && continue
+		if printf '%s\n' "$added" | grep -qE -- "$rule"; then
+			count=$(printf '%s\n' "$added" | grep -cE -- "$rule")
+			report "$f: $count added line(s) matched a credential/identifier rule [redacted]"
+		fi
+	done <<EOF
+$regex_patterns
+EOF
+done
+
+if [ "$violations" -gt 0 ]; then
+	{
+		printf '\npre-commit: refusing the commit, %d issue(s) above.\n' "$violations"
+		echo 'Nothing was printed from the matched lines. Check the staged content yourself with:'
+		echo '  git diff --cached -- <file>'
+		echo 'If this is a real secret it is now in your working tree only — rewrite it before committing,'
+		echo 'and consider rotating whatever it came from.'
+	} >&2
+	exit 1
+fi
+
+exit 0

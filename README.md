@@ -1,5 +1,14 @@
 # dsh-channel-wechat
 
+> **非官方声明**：本项目是独立开发者的第三方插件，与腾讯公司无关，也未获得其认可或授权；
+> 「微信 / WeChat」是腾讯公司的商标。插件调用腾讯**官方开放**的微信 Bot 通道 iLink（域名
+> `ilinkai.weixin.qq.com`，接口见微信开放平台的智能对话 / ClawBot 文档），不含逆向的私有
+> 通讯协议，也不打包腾讯的代码或素材。
+>
+> 使用前请自行阅读并遵守《微信软件许可及服务协议》与所在地法规。微信对个人账号的自动化行为
+> 保留处置权利，官方接口本身也可能收紧、变更或撤销绑定；账号与数据风险由使用者自行承担。
+> 本软件按 MIT 协议「原样」提供，不带任何担保。
+
 DeepSeek Harness 的个人微信 host 插件。它在 dsh 进程内长轮询 iLink，把你本人的微信消息作为任务交给本机 dsh 会话，再把回答分片发回微信。包名与插件名均为 `dsh-channel-wechat`，入口导出 `name`、`inject`、`Config`、`apply`，仅注入 `sessionController`。
 
 任务确认流程由独立插件 `dsh-task-confirm` 提供，本包不依赖它：两者只通过宿主服务名 `taskConfirm` 协作，确认插件缺席时微信通道照常工作。
@@ -50,6 +59,22 @@ pnpm build
 ```
 
 测试完全使用临时目录与 mock，不连接 iLink，不读取真实凭据。
+
+### 提交前泄露拦截
+
+仓库带了一个 pre-commit 钩子，只扫描**本次暂存的新增行**，命中本机绝对路径、本机用户名、
+LaunchAgent 标签、`wxid_`、配对码、`?token=` / `Bearer` 长串、GitHub / OpenAI 令牌形态、
+私钥块，或暂存了 `token.json`、`state.json`、`wx_qr.*`、`.env` 这类文件时拒绝提交。
+它只报告文件名与命中条数，不打印原文——把命中内容打印出来等于再添一次泄露。
+
+```bash
+cp scripts/git-hooks/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
+```
+
+钩子只防新提交，改不了已有历史；确认误报时可以用 `git commit --no-verify` 跳过。
+判定标准很简单：凡是能从 `git log -p` 里读到「某台机器上的目录结构」或「某个账号的凭据」的内容，都不该出现在公开历史里。
+
+`lib/` 是随仓库发布的编译产物，改完 `src/` 必须重新 `pnpm build` 一起提交，否则仓库里的源码和产物会不一致（没有 CI 校验这一点，靠自觉）。
 
 ## 配置
 
