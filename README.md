@@ -88,7 +88,14 @@ pnpm 版本钉在 workflow 里（`9.15.2`，对应 `lockfileVersion: 9.0`），�
 
 ### 合并规则
 
-`main` 上有一条 ruleset：提 PR 必须 `verify (20.x)` 与 `verify (24.x)` 全绿且分支已更新，并且 `main` 不允许删除。它不拦直接 `git push`，也不拦强推 —— 后者暂时故意留着，因为发布初期还需要修正历史；等历史定稿后会再收紧。
+`main` 上有两条 ruleset（Settings → Rules → Rulesets 可查）：
+
+- `pr-needs-green-ci`：`required_status_checks`，要求 `verify (20.x)` 与 `verify (24.x)` 全绿、且分支已跟上 `main`。Owner 在这条上配了 `always` bypass，所以维护者的直接 `git push origin main` 照常可用；对其他人它拦 PR 合并。
+- `main-no-deletion`：`deletion`，不给任何 bypass，谁都删不掉 `main`。
+
+一条实测结论，配置时值得注意：`required_status_checks` 不只拦 PR 合并，也会拦直接 `git push`——不加 bypass 时，一个只改文档的提交会被 `push declined due to repository rule violations` 弹回来。
+
+强推、分支更新与创建限制暂未配置：发布初期还需要修正历史，历史定稿后再收紧。
 
 ## 配置
 
