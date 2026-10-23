@@ -86,6 +86,10 @@ cp scripts/git-hooks/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre
 `lib/` 是随仓库发布的编译产物，所以那条 drift 检查是有意义的：改完 `src/` 忘记 `pnpm build` 就提交，CI 会直接告诉你 `lib/` 过期了，而不是让人装到一个和源码不一致的产物。
 pnpm 版本钉在 workflow 里（`9.15.2`，对应 `lockfileVersion: 9.0`），没有写进 `package.json` 的 `packageManager`——那个字段会驱动 Corepack，而本项目的插件是装进 dsh profile 的，profile 用的是另一个 pnpm。
 
+### 合并规则
+
+`main` 上有一条 ruleset：提 PR 必须 `verify (20.x)` 与 `verify (24.x)` 全绿且分支已更新，并且 `main` 不允许删除。它不拦直接 `git push`，也不拦强推 —— 后者暂时故意留着，因为发布初期还需要修正历史；等历史定稿后会再收紧。
+
 ## 配置
 
 `cordis.patch.yml` 默认保持关闭：
