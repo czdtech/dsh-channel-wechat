@@ -1,0 +1,57 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 20.x is the engines floor, 24.x is what the operator's own host runs.
+        node-version: ['20.x', '24.x']
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          # Matches pnpm-lock.yaml's lockfileVersion 9.0. Pinned here rather than
+          # in package.json's `packageManager`, because that field drives Corepack
+          # and this project is installed into dsh profiles with a different pnpm.
+          version: 9.15.2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test
+
+      - name: Committed lib/ matches src/
+        run: |
+          pnpm build
+          if [ -n "$(git status --porcelain -- lib)" ]; then
+            git status --porcelain -- lib
+            echo '::error::lib/ is stale or was hand-edited: run `pnpm build`, then commit the result.'
+            exit 1
+          fi
+
+      - name: Leak guard over the whole tree
+        run: sh scripts/git-hooks/pre-commit --all

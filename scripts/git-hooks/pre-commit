@@ -1,20 +1,37 @@
 #!/bin/sh
-# Pre-commit guard: block personal identifiers and credentials from entering the repo.
+# Leak guard: block personal identifiers and credentials from entering the repo.
 #
-# It reads only staged additions, reports the rule and the line number, and never
-# echoes the matched text — printing it would put the secret in the terminal and
-# in any pasted report.
+#   (no args)   pre-commit mode — scan only the lines this commit stages
+#   --all       tree mode       — scan every tracked file (used by CI)
+#
+# It reports the rule and a count, and never echoes the matched text: printing
+# the hit would put the secret into the terminal scrollback or the CI log, i.e.
+# a second leak while fixing the first.
 #
 # Install:  cp scripts/git-hooks/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
 # Escape:   git commit --no-verify   (only when you know exactly what matched)
 
 set -u
 
+mode=staged
+case "${1:-}" in
+	--all) mode=all ;;
+	'') ;;
+	*)
+		printf '%s\n' "pre-commit: unknown option ${1}" >&2
+		exit 2
+		;;
+esac
+
 if ! git rev-parse --git-dir >/dev/null 2>&1; then
 	exit 0
 fi
 
-files=$(git diff --cached --name-only --diff-filter=ACM)
+if [ "$mode" = all ]; then
+	files=$(git ls-files)
+else
+	files=$(git diff --cached --name-only --diff-filter=ACM)
+fi
 if [ -z "$files" ]; then
 	exit 0
 fi
@@ -54,22 +71,32 @@ report() {
 	violations=$((violations + 1))
 }
 
+content_of() {
+	if [ "$mode" = all ]; then
+		cat -- "$1" 2>/dev/null
+	else
+		# Added lines only, without the leading `+`, so existing history and
+		# context lines cannot trip the guard.
+		git diff --cached -U0 -- "$1" | sed -n '/^@@/,$p' | grep '^+' | grep -v '^+++' | sed 's/^+//'
+	fi
+}
+
 # Files that must never be tracked even if forced with `git add -f`.
 for f in $files; do
 	case "$f" in
 		*token.json|*state.json|wx_qr.*|*/bridge.lock|.env|*.env|*credentials*|*secrets.env)
-			report "forbidden path staged (credential-shaped file): $f"
+			report "forbidden path ($mode mode): $f"
 			;;
 	esac
 done
 
 for f in $files; do
 	# The guard's own pattern list contains literal secret shapes; without this
-	# skip it would block every commit that touches the hook itself.
+	# skip it would block every commit that touches it, and would report itself
+	# when CI scans the whole tree.
 	case "$f" in scripts/git-hooks/pre-commit|.git/hooks/pre-commit) continue ;; esac
-	# Only added lines, without the leading `+`, so existing history and context
-	# lines cannot trip the guard.
-	added=$(git diff --cached -U0 -- "$f" | sed -n '/^@@/,$p' | grep '^+' | grep -v '^+++' | sed 's/^+//')
+
+	added=$(content_of "$f")
 	if [ -z "$added" ]; then
 		continue
 	fi
@@ -78,7 +105,7 @@ for f in $files; do
 		[ -z "$needle" ] && continue
 		if printf '%s\n' "$added" | grep -qF -- "$needle"; then
 			count=$(printf '%s\n' "$added" | grep -cF -- "$needle")
-			report "$f: $count added line(s) contain a machine-local string [redacted]"
+			report "$f: $count line(s) contain a machine-local string [redacted]"
 		fi
 	done <<EOF
 $literal_patterns
@@ -88,7 +115,7 @@ EOF
 		[ -z "$rule" ] && continue
 		if printf '%s\n' "$added" | grep -qE -- "$rule"; then
 			count=$(printf '%s\n' "$added" | grep -cE -- "$rule")
-			report "$f: $count added line(s) matched a credential/identifier rule [redacted]"
+			report "$f: $count line(s) matched a credential/identifier rule [redacted]"
 		fi
 	done <<EOF
 $regex_patterns
@@ -96,13 +123,22 @@ EOF
 done
 
 if [ "$violations" -gt 0 ]; then
-	{
-		printf '\npre-commit: refusing the commit, %d issue(s) above.\n' "$violations"
-		echo 'Nothing was printed from the matched lines. Check the staged content yourself with:'
-		echo '  git diff --cached -- <file>'
-		echo 'If this is a real secret it is now in your working tree only — rewrite it before committing,'
-		echo 'and consider rotating whatever it came from.'
-	} >&2
+	if [ "$mode" = all ]; then
+		{
+			printf '\nleak guard (all mode): %d tracked file(s) or line(s) above match.\n' "$violations"
+			echo 'Nothing was printed from the matched lines. Inspect them yourself with:  cat <file>'
+			echo 'These are already committed, so scrubbing the working tree is not enough: rewrite the'
+			echo 'content, commit it, and rotate whatever the value protects. History still holds the old'
+			echo 'blob until the branch is replaced.'
+		} >&2
+	else
+		{
+			printf '\nleak guard (staged mode): refused the commit, %d issue(s) above.\n' "$violations"
+			echo 'Nothing was printed from the matched lines. Inspect them yourself with:  git diff --cached -- <file>'
+			echo 'Nothing is committed yet — fix the content and stage it again. If the value was real,'
+			echo 'rotate it, since it sat in a file on disk.'
+		} >&2
+	fi
 	exit 1
 fi
 

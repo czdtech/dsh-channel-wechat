@@ -74,7 +74,15 @@ cp scripts/git-hooks/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre
 钩子只防新提交，改不了已有历史；确认误报时可以用 `git commit --no-verify` 跳过。
 判定标准很简单：凡是能从 `git log -p` 里读到「某台机器上的目录结构」或「某个账号的凭据」的内容，都不该出现在公开历史里。
 
-`lib/` 是随仓库发布的编译产物，改完 `src/` 必须重新 `pnpm build` 一起提交，否则仓库里的源码和产物会不一致（没有 CI 校验这一点，靠自觉）。
+同一套规则也在 CI 上以 `--all` 模式跑整棵已提交的树，所以漏网的提交至少会在下一次 PR 上被翻出来。
+
+### CI
+
+`.github/workflows/ci.yml` 在 Node `20.x`（engines 下限）和 `24.x`（作者本机版本）上跑：
+`pnpm install --frozen-lockfile` → `typecheck` → `test` → 重新 `build` 并要求 `lib/` 零差异 → 泄露拦截全树扫描。
+
+`lib/` 是随仓库发布的编译产物，所以那条 drift 检查是有意义的：改完 `src/` 忘记 `pnpm build` 就提交，CI 会直接告诉你 `lib/` 过期了，而不是让人装到一个和源码不一致的产物。
+pnpm 版本钉在 workflow 里（`9.15.2`，对应 `lockfileVersion: 9.0`），没有写进 `package.json` 的 `packageManager`——那个字段会驱动 Corepack，而本项目的插件是装进 dsh profile 的，profile 用的是另一个 pnpm。
 
 ## 配置
 
